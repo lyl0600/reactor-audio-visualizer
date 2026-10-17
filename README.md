@@ -1,20 +1,58 @@
 # Reactor Audio Visualizer
 
-以切尔诺贝利反应堆堆芯的控制棒阵列为视觉原型的实时音频可视化实验。
+以切尔诺贝利反应堆堆芯的控制棒阵列为视觉原型的实时音频可视化。
 
-网页使用 Web Audio API 在浏览器本机分析音频，将不同频段的能量映射为 709 根控制棒的升降运动。支持演示信号、本地音频文件、麦克风输入、视角拖动与缩放，以及灵敏度、平滑度和音量调节。
+网页用 Web Audio API 在浏览器本机分析音频，把不同频段的能量映射为 **709 根控制棒的升降运动**。
+支持演示信号、麦克风输入、本地音频文件（含拖拽导入）、视角拖动与缩放、全屏，以及灵敏度 / 平滑度 / 音量调节。
 
-## Run locally
+## 运行
+
+```bash
+node serve.mjs
+# → http://localhost:4173
+```
+
+换端口：`node serve.mjs 8080`。
+
+不想用 node 也可以：
 
 ```bash
 python3 -m http.server 4173 --directory dist
 ```
 
-Then open <http://localhost:4173>.
+> **别直接双击 `dist/index.html`**：`file://` 不是安全上下文，浏览器会拒绝 `getUserMedia`，
+> 麦克风模式会直接报错。必须经由 `http://localhost` 访问。
+
+## 操作
+
+| 操作 | 说明 |
+|---|---|
+| 演示信号 / 麦克风 | 右上控制台切换输入源 |
+| 导入音频文件 | 点按钮选择，或**直接把文件拖到画布上** |
+| `空格` | 播放 / 暂停 |
+| `R` | 重置视角 |
+| 拖动 / 滚轮 | 旋转视角 / 缩放 |
+| 灵敏度、平滑度、音量 | 实时生效 |
+
+## 技术要点
+
+- `AnalyserNode`，`fftSize = 2048`；每根控制棒按半径 `r` 映射到对数频率
+  `45 × 320^(r/15)` Hz，取相邻三个频段求均值后做 `^1.7` 曲线压缩；
+- 60° 伪三维视图：正交投影 + 手写深度排序（按旋转后的 z 值）；
+- 视觉细节：堆芯环、外层 80 格护栏、控制棒顶部的石墨/燃料配色、实时频谱条；
+- `ResizeObserver` 跟随容器，`devicePixelRatio` 上限 2，避免高分屏掉帧。
+
+## 已验证
+
+在本机（Windows 11 + Edge 无头 + CDP）实测：
+
+- 控制棒数量 709，画布按容器尺寸自适应（1085×923）；
+- 演示信号下：输入电平 −26 dB、峰值频率 445 Hz、最大棒高 ≈ 4.5；
+- 页面无 JS 异常，`requestAnimationFrame` 循环持续运行。
 
 ## Notes
 
-This is an audiovisual interaction experiment. It is not a physical simulation of a reactor, and audio is processed locally in the browser.
+这是一个视听交互实验，不是反应堆的物理模拟。音频只在浏览器本机处理，不会上传。
 
 ## License
 
