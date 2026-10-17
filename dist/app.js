@@ -26,11 +26,35 @@ $('mic').onclick=()=>{stop();mode='mic';offset=0;buffer=null;$('trackname').text
 $('upload').onclick=()=>$('file').click();
 async function loadFile(f){if(!f)return;if(f.type&&!f.type.startsWith('audio/')){$('message').textContent='这不是音频文件，请选择 MP3 / WAV / M4A / FLAC。';return}stop();const id=session;loading=true;$('message').textContent='正在读取音频…';try{await audio();const decoded=await ctx.decodeAudioData(await f.arrayBuffer());if(id!==session)return;buffer=decoded;mode='file';offset=0;$('trackname').textContent=f.name;$('duration').textContent=format(buffer.duration);$('elapsed').textContent='00:00';$('seek').value=0;update();loading=false;await start()}catch{$('message').textContent='无法读取该文件，请尝试 MP3 或 WAV 音频。'}finally{loading=false}}
 $('file').onchange=e=>{const f=e.target.files[0];if(f)loadFile(f);e.target.value=''};
+let rec=null,chunks=[],recTimer=0;
+$('record').onclick=async()=>{
+  if(rec&&rec.state==='recording'){rec.stop();return}
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({audio:true});
+    chunks=[];rec=new MediaRecorder(s);
+    rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+    rec.onstop=async()=>{
+      clearInterval(recTimer);s.getTracks().forEach(t=>t.stop());
+      $('record').textContent='● 录制一段';$('record').classList.remove('live-rec');
+      const type=(rec&&rec.mimeType)||'audio/webm';
+      const blob=new Blob(chunks,{type});
+      if(!blob.size){$('message').textContent='没有录到声音，请再试一次。';return}
+      $('message').textContent='正在分析录音…';
+      await loadFile(new File([blob],'recording-'+Date.now()+'.webm',{type}));
+    };
+    rec.start();$('record').textContent='■ 停止录制';$('record').classList.add('live-rec');
+    const t0=Date.now();clearInterval(recTimer);
+    recTimer=setInterval(()=>{$('message').textContent='正在录制 '+((Date.now()-t0)/1000).toFixed(1)+' s，再点一次停止并开始可视化。'},200);
+  }catch{$('message').textContent='无法访问麦克风，请检查浏览器权限（需要 https 或 localhost）。'}
+};
 document.addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('dragging')});
 document.addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('dragging')});
 document.addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('dragging');const f=e.dataTransfer&&e.dataTransfer.files?e.dataTransfer.files[0]:null;if(f)loadFile(f)});
 document.addEventListener('keydown',e=>{if(e.target!==document.body)return;if(e.code==='Space'){e.preventDefault();$('play').click()}else if(e.key==='r'||e.key==='R'){$('reset').click()}});
 $('seek').onchange=()=>{if(mode!=='file'||!buffer)return;const was=playing;stop();offset=+$('seek').value/100*buffer.duration;$('elapsed').textContent=format(offset);if(was)start()};
 $('gain').oninput=e=>{gain=+e.target.value;$('gainval').textContent=gain.toFixed(1)+'×'};$('smooth').oninput=e=>{smoothing=+e.target.value/100;$('smoothval').textContent=e.target.value+'%'};$('volume').oninput=e=>{$('volumeval').textContent=e.target.value+'%';if(master&&mode!=='mic')master.gain.setTargetAtTime(+e.target.value/100,ctx.currentTime,.03)};
-canvas.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId)};canvas.onpointermove=e=>{if(!drag)return;angle+=(e.clientX-drag.x)*.006;tilt=Math.max(.25,Math.min(.85,tilt+(e.clientY-drag.y)*.002));drag={x:e.clientX,y:e.clientY}};canvas.onpointerup=canvas.onpointercancel=()=>drag=null;canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.65,Math.min(1.5,zoom-e.deltaY*.001))},{passive:false});$('reset').onclick=()=>{angle=-.32;tilt=.58;zoom=1};$('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen()}catch{$('message').textContent='当前浏览器不支持全屏。'}};document.addEventListener('fullscreenchange',()=>{$('fullscreen').textContent=document.fullscreenElement?'退出全屏 ↙':'全屏 ↗'});window.addEventListener('pagehide',stop);update();
+const pts=new Map();let pinch=null;
+canvas.onpointerdown=e=>{canvas.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pts.size===1)drag={x:e.clientX,y:e.clientY};if(pts.size===2){const[a,b]=[...pts.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),zoom}}};
+canvas.onpointermove=e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pts.size>=2&&pinch){const[a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch.d>0)zoom=Math.max(.65,Math.min(1.5,pinch.zoom*d/pinch.d));return}if(!drag)return;angle+=(e.clientX-drag.x)*.006;tilt=Math.max(.25,Math.min(.85,tilt+(e.clientY-drag.y)*.002));drag={x:e.clientX,y:e.clientY}};
+canvas.onpointerup=canvas.onpointercancel=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!pts.size)drag=null};canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.65,Math.min(1.5,zoom-e.deltaY*.001))},{passive:false});$('reset').onclick=()=>{angle=-.32;tilt=.58;zoom=1};$('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen()}catch{$('message').textContent='当前浏览器不支持全屏。'}};document.addEventListener('fullscreenchange',()=>{$('fullscreen').textContent=document.fullscreenElement?'退出全屏 ↙':'全屏 ↗'});window.addEventListener('pagehide',stop);update();
 if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'configure_reactor_response',description:'Adjust the reactor audio visualizer sensitivity and motion smoothing.',inputSchema:{type:'object',properties:{sensitivity:{type:'number',minimum:.3,maximum:3},smoothing:{type:'number',minimum:0,maximum:95}},required:['sensitivity','smoothing'],additionalProperties:false},execute(input){if(!input||!Number.isFinite(input.sensitivity)||input.sensitivity<.3||input.sensitivity>3||!Number.isFinite(input.smoothing)||input.smoothing<0||input.smoothing>95)throw Error('Invalid response settings');$('gain').value=input.sensitivity;$('gain').dispatchEvent(new Event('input'));$('smooth').value=input.smoothing;$('smooth').dispatchEvent(new Event('input'));return{ sensitivity:gain,smoothing:smoothing*100}}})).catch(()=>{})}catch{}}

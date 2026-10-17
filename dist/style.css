@@ -2,3 +2,5 @@
 
 body.dragging .stage{outline:2px dashed var(--accent);outline-offset:-14px}
 body.dragging .stage::after{content:'松开导入音频';position:absolute;inset:auto 0 50% 0;text-align:center;font:13px monospace;letter-spacing:2px;color:var(--accent);pointer-events:none}
+
+.upload+.upload{margin-top:8px}.upload.rec span{color:#d98b7c}.upload.rec.live-rec{outline:1px solid #d98b7c;outline-offset:-1px}.upload.rec.live-rec strong{color:#e7a191}
